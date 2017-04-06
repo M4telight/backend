@@ -1,0 +1,13 @@
+[Layout]
+crate_rows = 4
+crate_columns = 3
+crate_width = 5
+crate_height = 4
+
+[Crates]
+crates = BottomLeftCrate, BottomRightCrate, BottomLeftCrate, TopLeftCrate, TopRightCrate, TopLeftCrate, BottomLeftCrate, BottomRightCrate, BottomLeftCrate, BottomRightCrate, TopRightCrate, BottomRightCrate
+
+[Remote]
+host: 127.0.0.1
+#host: 192.168.1.22
+port: 9999
