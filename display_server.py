@@ -22,13 +22,14 @@ class DataListener:
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.setblocking(True)
-        self.sock.bind((ip, port))
+        self.sock.bind(('0.0.0.0', port))
 
         self.controller = controller
 
         # rgb image without 4 bytes checksum
         self.frame_size = self.controller.image_width * self.controller.image_height * 3
         self.log = print
+        self.ip = ip
 
     def close(self):
         self.sock.close()
@@ -39,6 +40,10 @@ class DataListener:
     def __iter__(self):
         while True:
             data, (addr, sport) = self.get_data()
+            if addr != self.ip:
+                # do not allow data form other hosts ;)
+                continue
+
             if data is None:
                 yield None, None
 
@@ -49,8 +54,8 @@ class DataListener:
                 #     self.log('Error receiving UDP frame: Invalid frame CRC checksum: Expected {}, got {}'.format(crc2, crc1))
                 #     continue
             elif len(data) != self.frame_size:
-                self.log('Error receiving UDP frame: Invalid frame size: {}'.format(len(data)))
-                continue0
+                # self.log('Error receiving UDP frame: Invalid frame size: {}'.format(len(data)))
+                continue
             yield 'udp:'+addr, data
 
 
@@ -136,11 +141,14 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--port', type=int, default=1337, help='port to listen on')
     parser.add_argument('--idle-time', type=int, default=20, help='max. number of seconds matelight shall idle')
     parser.add_argument('--motd', default='Contribute on code.ilexlux.xyz!')
+    parser.add_argument('--allowed-host', default='conrol.ilexlux.xyz', help='name of host to accept data from')
 
     args = parser.parse_args()
 
+    ip_of_allowed_host = socket.gethostbyname(args.allowed_host)
+
     controller = LEDController(args.config)
-    server = DataListener(controller, port=args.port)
+    server = DataListener(controller, port=args.port, ip=ip_of_allowed_host)
     last_frame = datetime.utcnow()
 
     pause_filler = PauseFiller(args.motd, controller)
