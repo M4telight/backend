@@ -1,5 +1,6 @@
 import time
 import math
+import copy
 
 from collections import namedtuple
 
@@ -113,11 +114,44 @@ class PauseFiller(threading.Thread):
         self.display_text(text_image, slide_image=True)
 
 
+class GifPauseFiller(threading.Thread):
+
+    def __init__(self, image, controller):
+        super().__init__()
+        self.controller = controller
+        self.image = Image.open(image)
+        self.stop = False
+
+        self.frames = []
+        self.convert_gif()
+
+    def convert_gif(self):
+        self.image.seek(1)
+        try:
+            while True:
+                data = copy.copy(self.image.resize((self.controller.image_width, self.controller.image_height), Image.ANTIALIAS))
+                data = data.convert('RGB')
+                data = np.array(data, dtype=np.uint8)
+                self.frames.append(data)
+                self.image.seek(self.image.tell() + 1)
+        except EOFError:
+            pass
+
+    def run(self):
+        while True:
+            for frame in self.frames:
+                if self.stop:
+                    return
+                self.controller.display(frame)
+
+
 class IdleWatcher(threading.Thread):
 
-    def __init__(self, idle_time):
+    def __init__(self, idle_time, pause_filler_class, pause_filler_args):
         super().__init__()
         self.idle_time = idle_time
+        self.pause_filler_class = pause_filler_class
+        self.pause_filler_args = pause_filler_args
 
     def run(self):
         global pause_filler
@@ -127,7 +161,7 @@ class IdleWatcher(threading.Thread):
             time_delta = (time_now - last_frame).total_seconds()
 
             if time_delta > self.idle_time and not pause_filler.is_alive():
-                pause_filler = PauseFiller(args.motd, controller)
+                pause_filler = self.pause_filler_class(*self.pause_filler_args)
                 pause_filler.start()
 
 
@@ -141,6 +175,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--port', type=int, default=1337, help='port to listen on')
     parser.add_argument('--idle-time', type=int, default=20, help='max. number of seconds matelight shall idle')
     parser.add_argument('--motd', default='Contribute on code.ilexlux.xyz!')
+    parser.add_argument('--gif', help='Path to gif that shall be used as screensaver')
     parser.add_argument('--allowed-host', default='conrol.ilexlux.xyz', help='name of host to accept data from')
 
     args = parser.parse_args()
@@ -151,11 +186,15 @@ if __name__ == "__main__":
     server = DataListener(controller, port=args.port, ip=ip_of_allowed_host)
     last_frame = datetime.utcnow()
 
-    pause_filler = PauseFiller(args.motd, controller)
-    pause_filler.start()
+    if args.gif is not None:
+        pause_filler = GifPauseFiller(args.gif, controller)
+        idle_watcher = IdleWatcher(args.idle_time, GifPauseFiller, (args.gif, controller))
+    else:
+        pause_filler = PauseFiller(args.motd, controller)
+        idle_watcher = IdleWatcher(args.idle_time, PauseFiller, (args.motd, controller))
 
-    idle_watcher = IdleWatcher(args.idle_time)
     idle_watcher.start()
+    pause_filler.start()
 
     try:
         for _, frame in server:
